@@ -1,0 +1,139 @@
+syntax = "proto3";
+package kvpb;
+
+import "metapb.proto";
+import "errorpb.proto";
+
+// Raw commands.
+message RawGetRequest {
+    Context context = 1;
+    bytes key = 2;
+    string cf = 3;
+}
+
+message RawGetResponse {
+    errorpb.Error region_error = 1;
+    string error = 2;
+    bytes value = 3;
+    // True if the requested key doesn't exist; another error will not be signalled.
+    bool not_found = 4;
+}
+
+
+message RawPutRequest {
+    Context context = 1;
+    bytes key = 2;
+    bytes value = 3;
+    string cf = 4;
+}
+
+message RawPutResponse {
+    errorpb.Error region_error = 1;
+    string error = 2;
+}
+
+message RawDeleteRequest {
+    Context context = 1;
+    bytes key = 2;
+    string cf = 3;
+}
+
+message RawDeleteResponse {
+    errorpb.Error region_error = 1;
+    string error = 2;
+}
+
+message RawScanRequest {
+    Context context = 1;
+    bytes start_key = 2;
+    // The maximum number of values read.
+    uint32 limit = 3;
+    string cf = 4;
+
+}
+
+message RawScanResponse {
+    errorpb.Error region_error = 1;
+    // An error which affects the whole scan. Per-key errors are included in kvs.
+    string error = 2;
+    repeated KvPair kvs = 3;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// Utility data types used by the above requests and responses.
+
+// Either a key/value pair or an error for a particular key.
+message KvPair {
+    KeyError error = 1;
+    bytes key = 2;
+    bytes value = 3;
+}
+
+enum Op {
+    Put = 0;
+    Del = 1;
+    Rollback = 2;
+    // Used by TinySQL but not TinyKV.
+    Lock = 3;
+}
+
+message Mutation {
+    Op op = 1;
+    bytes key = 2;
+    bytes value = 3;
+}
+
+enum Action {
+    NoAction = 0;
+    // The lock is rolled back because it has expired.
+    TTLExpireRollback = 1;
+    // The lock does not exist, TinyKV left a record of the rollback, but did not
+    // have to delete a lock.
+    LockNotExistRollback = 2;
+}
+
+// Data types used for errors.
+
+// Many responses can include a KeyError for some problem with one of the requested key.
+// Only one field is set and it indicates what the client should do in response.
+message KeyError {
+    LockInfo locked = 1;        // Client should backoff or cleanup the lock then retry.
+    string retryable = 2;       // Client may restart the txn. e.g write conflict.
+    string abort = 3;           // Client should abort the txn.
+    WriteConflict conflict = 4; // Another transaction is trying to write a key. The client can retry.
+}
+
+message LockInfo {
+    bytes primary_lock = 1;
+    uint64 lock_version = 2;
+    bytes key = 3;
+    uint64 lock_ttl = 4;
+}
+
+message WriteConflict {
+    uint64 start_ts = 1;
+    uint64 conflict_ts = 2;
+    bytes key = 3;
+    bytes primary = 4;
+}
+
+// Miscellaneous data present in each request.
+message Context {
+    uint64 region_id = 1;
+    metapb.RegionEpoch region_epoch = 2;
+    metapb.Peer peer = 3;
+    uint64 term = 5;
+}

@@ -1,0 +1,16 @@
+syntax = "proto3";
+package tinykvpb;
+
+import "kvpb.proto";
+
+// Serve as a distributed kv database. 
+// See the request and response definitions in kv.proto
+service TinyKv {
+
+    // RawKV commands.
+    rpc RawGet(kvpb.RawGetRequest) returns (kvpb.RawGetResponse) {}
+    rpc RawPut(kvpb.RawPutRequest) returns (kvpb.RawPutResponse) {}
+    rpc RawDelete(kvpb.RawDeleteRequest) returns (kvpb.RawDeleteResponse) {}
+    rpc RawScan(kvpb.RawScanRequest) returns (kvpb.RawScanResponse) {}
+
+}

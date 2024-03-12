@@ -1,0 +1,38 @@
+[workspace]
+resolver = "2"
+
+members = [
+    "tinykv",
+    "tinysql",
+]
+
+
+[workspace.dependencies]
+anyhow = "1.0.75"
+config = { version = "0.14.0", features = ["toml"]}
+axum = {version = "0.7.2"}
+serde = {version = "1.0.193", features = ["derive"] }
+serde_json = "1.0.68"
+tokio = { version = "1.0", features = ["full"] }
+tokio-stream = { version = "0.1.14" }
+futures = { version = "0.3.30" }
+future-utils = "0.12.1"
+heed = "0.11.0"
+rkyv = "0.7.43"
+hashbrown = "0.14.3"
+memmap2 = "0.9.3"
+thiserror = "1.0.50"
+bytes = { version = "1", features = ["serde"] }
+uuid = { version = "1.6.1", features = ["v4"] }
+ulid = "1.1.0"
+crossbeam = "0.8.2"
+smallvec = "1.11.2"
+zstd = "0.13.0"
+bincode = "1.3.3"
+oneshot = "0.1.6"
+byteorder = "1.5.0"
+parking_lot = "*"
+async-trait = "0.1.77"
+
+
+
