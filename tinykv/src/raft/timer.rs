@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use tokio::{sync::mpsc::{channel, Sender}, task::JoinHandle, time};
 
-use super::{error::RaftResult, NodeSender, RaftMessage};
+use super::{error::{RaftError, RaftResult}, NodeSender, RaftMessage};
 
 enum TimerEvent {
     ResetClock,
@@ -10,6 +10,7 @@ enum TimerEvent {
 }
 
 
+#[derive(Debug)]
 pub(crate) struct Timer {
     // clock timeout value
     timeout: Duration,
@@ -26,43 +27,12 @@ pub(crate) struct Timer {
 impl Timer {
 
     pub fn new(timeout: Duration, sender: NodeSender, timeout_message: RaftMessage) -> Self {
-        // zero timeout is for dummy clock, no need to setup a task.
-        let (clock_task_handle, timer_event_sender) = if !timeout.is_zero() {
-            let event_sender = sender.clone();
-            let (timer_event_sender, mut timer_event_receiver) = channel::<TimerEvent>(10);
-            let moved_timeout_message = timeout_message.clone();
-            let handle = tokio::spawn(async move {
-                let mut interval = time::interval(timeout);
-                // get rid of first immediate tick
-                interval.tick().await;
-    
-                loop {
-                    tokio::select! {
-                        event_opt = timer_event_receiver.recv() => {
-                            if let Some(event) = event_opt {
-                                match event {
-                                    TimerEvent::ResetClock => interval.reset(),
-                                    TimerEvent::StopClock => break,
-                                }
-                            }
-                        }
-                        _ = interval.tick() => {
-                            event_sender.send(moved_timeout_message.clone()).unwrap();
-                        }
-                    }
-                }
-            });
-            (Some(handle), Some(timer_event_sender))
-        } else {
-            (None, None)
-        };
-        
         Self{
             timeout, 
             sender,
             timeout_message,
-            timer_event_sender,
-            clock_task_handle,
+            timer_event_sender: None,
+            clock_task_handle: None,
         }
     }
 
@@ -71,13 +41,48 @@ impl Timer {
         Self::new(Duration::ZERO, sender, timeout_message)
     }
 
-    // pub fn start(&self) {
-    //     let timeout = self.timeout.clone();
-    //     let timer_event_receiver = self.timer_event_channel.1.clone();
-    //     let event_sender = self.sender.clone();
-    //     let timeout_message = self.timeout_message.clone();
-    //     self.clock_task_handle  = 
-    // }
+    pub fn start(&mut self) {
+        if self.timeout.is_zero()  {
+            return; // zero timeout is for dummy clock, no need to setup a task.
+        }
+
+        let event_sender = self.sender.clone();
+        let (timer_event_sender, mut timer_event_receiver) = channel::<TimerEvent>(10);
+        let moved_timeout_message = self.timeout_message.clone();
+        let timeout = self.timeout.clone();
+        let handle = tokio::spawn(async move {
+            let mut interval = time::interval(timeout);
+            // Get rid of first immediate tick
+            interval.tick().await;
+
+            loop {
+                tokio::select! {
+                    event_opt = timer_event_receiver.recv() => {
+                        if let Some(event) = event_opt {
+                            match event {
+                                TimerEvent::ResetClock => interval.reset(),
+                                TimerEvent::StopClock => break,
+                            }
+                        }
+                    }
+                    _ = interval.tick() => {
+                        event_sender.send(moved_timeout_message.clone()).unwrap();
+                    }
+                }
+            }
+        });
+
+        self.clock_task_handle = Some(handle);
+        self.timer_event_sender = Some(timer_event_sender);
+    }
+
+    pub async fn restart(&mut self) -> RaftResult<()> { 
+        if self.clock_task_handle.is_none() {
+            self.start();
+            return Ok(())
+        }
+        self.reset().await
+    }
 
     pub async fn reset(&self) -> RaftResult<()> {
         if let Some(sender) = &self.timer_event_sender {
@@ -96,8 +101,9 @@ impl Timer {
         Ok(())
     }
 
-    pub fn timeout(&self) {
-        self.sender.send(self.timeout_message.clone()).unwrap()
+    pub fn timeout(&self)  -> RaftResult<()> {
+        self.sender.send(self.timeout_message.clone())
+            .map_err(RaftError::from)
     }
 
 }
